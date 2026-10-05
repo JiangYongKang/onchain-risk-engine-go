@@ -148,6 +148,13 @@ func rankOf(order []graph.PatternKind, k graph.PatternKind) int {
 	return len(order)
 }
 
+// AnalyzeTxs 用给定规则集对一批规范化交易做纯函数式分析。
+// 这是全量与增量共用的唯一分析入口：增量视图只要保证其边集与“当前全量
+// 已接受交易”相同，调用本函数得到的报告就与全量重算逐字节一致。
+func AnalyzeTxs(rules RuleSet, txs []ledger.Tx) Report {
+	return analyze(normalize(rules), txs)
+}
+
 // Analyze 对账本快照做确定性分析；并发调用结论必须一致。
 func (e *Engine) Analyze(l *ledger.Ledger) Report {
 	e.mu.RLock()

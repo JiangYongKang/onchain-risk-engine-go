@@ -43,5 +43,9 @@ type Tx struct {
 type IngestResult struct {
 	Accepted []Tx
 	Rejected []RejectedRecord
-	Pending  []Record // 乱序暂存、尚不能提交的记录
+	Pending  []Record // 乱序暂存、尚不能提交的记录（当前模型立即提交，始终为空）
+	// Replaced 是同 ID 冲突中被确定性淘汰、移出已接受集合的旧交易。
+	// 见 Ingest 的同 ID 冲突规则：最终胜出者只由记录内容全序决定，
+	// 因此哪些交易被替换与投递顺序、混批方式无关。
+	Replaced []Tx
 }

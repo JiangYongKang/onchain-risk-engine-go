@@ -24,7 +24,10 @@ func Build(edges []Edge) *Graph {
 	seen := map[string]struct{}{}
 	accounts := make([]string, 0)
 	adj := map[string][]int{}
+	radj := map[string][]int{}
 	pair := map[string]map[string]int{}
+	nbrs := map[string][]string{}
+	byTx := make(map[string]int, len(es))
 	for idx, e := range es {
 		for _, a := range []string{e.From, e.To} {
 			if _, ok := seen[a]; !ok {
@@ -33,16 +36,19 @@ func Build(edges []Edge) *Graph {
 			}
 		}
 		adj[e.From] = append(adj[e.From], idx)
+		radj[e.To] = append(radj[e.To], idx)
+		byTx[e.TxID] = idx
 		if pair[e.From] == nil {
 			pair[e.From] = map[string]int{}
 		}
 		// 时间序中最早的一条 u->v 边，确定且唯一。
 		if _, ok := pair[e.From][e.To]; !ok {
 			pair[e.From][e.To] = idx
+			nbrs[e.From] = append(nbrs[e.From], e.To)
 		}
 	}
 	sort.Strings(accounts)
-	return &Graph{accounts: accounts, edges: es, adj: adj, pair: pair}
+	return &Graph{accounts: accounts, edges: es, adj: adj, radj: radj, pair: pair, nbrs: nbrs, byTx: byTx}
 }
 
 // Accounts 返回账户列表（确定性排序）。
@@ -184,12 +190,12 @@ func (g *Graph) DetectCycles(maxDepth int) []Pattern {
 		indexOnPath[u] = len(stack)
 		stack = append(stack, u)
 
-		for _, ei := range g.adj[u] {
+		// 按“不同邻居账户”扩展而非按边：同一对账户间的平行边只走一次，
+		// 否则重复转账（真实数据中极常见）会让简单路径数随深度指数爆炸。
+		for _, v := range g.nbrs[u] {
 			if len(found) >= maxPatterns {
 				return
 			}
-			e := g.edges[ei]
-			v := e.To
 			if onPath[v] {
 				cyc := append([]string(nil), stack[indexOnPath[v]:]...)
 				// 只允许字典序最小的账户作为该环的“发现根”，避免重复报告。

@@ -35,6 +35,13 @@ type Graph struct {
 	edges    []Edge
 	// adj[u] = 从 u 出发的边在 edges 中的下标（按输入顺序，即时间顺序）。
 	adj map[string][]int
+	// radj[u] = 指向 u 的边在 edges 中的下标（按时间顺序），供溯源反向遍历。
+	radj map[string][]int
 	// pair[u][v] = u->v 的边在 edges 中的下标（取最早一条，确定性）。
 	pair map[string]map[string]int
+	// nbrs[u] = u 的不同出边邻居（按各自最早边的时间序，确定性）。
+	// 环路检测按“邻居账户”而非“边”扩展，避免平行边导致路径数爆炸。
+	nbrs map[string][]string
+	// byTx[txID] = 该交易对应边在 edges 中的下标。
+	byTx map[string]int
 }

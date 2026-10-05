@@ -58,21 +58,29 @@ func validate(r Record) (Tx, RejectReason, string) {
 
 // Ingest 增量摄取一批记录。重复投递不改变最终状态。
 // 返回值是本次调用新接受 / 被拒绝记录的副本，可安全长期持有。
+//
+// 拒绝原因稳定性：先做单条记录的内容校验，再做幂等去重。因此一条记录
+// 的拒绝原因只由它自身的内容决定（校验失败），或仅在内容合法时由 ID
+// 唯一性决定（duplicate_id）——与批次大小、到达顺序、同批混入了什么
+// 其他记录无关。同一条记录无论怎么分批、按什么顺序、和什么数据一起
+// 投递，拒绝原因永远相同。
 func (l *Ledger) Ingest(records []Record) IngestResult {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	res := IngestResult{}
-	// 本批次内已见过的 ID（含被拒绝的），保证批内重复也有确定结论。
+	// 本批次内已见过的合法记录 ID，保证批内重复也有确定结论。
 	batchSeen := make(map[string]struct{}, len(records))
 
 	for _, r := range records {
-		// ID 缺失无法做幂等判断，优先报缺失。
-		if r.ID == "" {
-			_, reason, detail := validate(r)
+		// 1) 内容校验优先：非法记录永远得到自己的校验原因，
+		//    不会因为 ID 撞车而被误报成 duplicate_id。
+		tx, reason, detail := validate(r)
+		if reason != ReasonNone {
 			res.Rejected = append(res.Rejected, RejectedRecord{Record: r, Reason: reason, Detail: detail})
 			continue
 		}
+		// 2) 合法记录才参与幂等去重。
 		if _, ok := l.accepted[r.ID]; ok {
 			res.Rejected = append(res.Rejected, RejectedRecord{
 				Record: r, Reason: ReasonDuplicate, Detail: "already ingested: " + r.ID,
@@ -87,11 +95,6 @@ func (l *Ledger) Ingest(records []Record) IngestResult {
 		}
 		batchSeen[r.ID] = struct{}{}
 
-		tx, reason, detail := validate(r)
-		if reason != ReasonNone {
-			res.Rejected = append(res.Rejected, RejectedRecord{Record: r, Reason: reason, Detail: detail})
-			continue
-		}
 		l.accepted[tx.ID] = tx
 		l.order = append(l.order, tx)
 		res.Accepted = append(res.Accepted, tx)
